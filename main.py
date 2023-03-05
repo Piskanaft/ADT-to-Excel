@@ -78,6 +78,7 @@ class MainWindow(base_class):
         self.timer.start(1000)
         
     def write_existing_btn_pressed(self):
+        #TODO catch opened excel exception
         if not hasattr(self, 'excel_file_path'):
             return None
 
@@ -96,7 +97,7 @@ class MainWindow(base_class):
         self.ui.existing_done_tick.setHidden(False)
         self.timer.start(1000)
 
-    def set_styles(self,ws, length):
+    def set_styles(self, ws, length):
         bold = Font(color="00000000", bold  = True)
         
         for row in ws.iter_rows(min_row = 1, max_row = 1, min_col=1, max_col = length):
@@ -119,7 +120,7 @@ class MainWindow(base_class):
             del lines[1]
             line1, line2 = lines
             
-            dating = line1[line1.find('T0=')+4:event.find('Err=')-1]
+            dating = line1[line1.find('T0=')+3:event.find('Err=')-1]
             fulldate = datetime.strptime(dating, "%d.%m.%Y   %H.%M:%S.%f")
             date = fulldate.strftime("%d.%m.%Y")
             time = fulldate.strftime('%H:%M:%S.%f')[:-5]
