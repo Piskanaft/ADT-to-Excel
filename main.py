@@ -38,61 +38,59 @@ class MainWindow(base_class):
 
 
     def load_file(self, format, extenion):
-        file_path = qtw.QFileDialog.getOpenFileName(self, 'Open File',filter=f"{format} (*.{extenion})")
-        
-        if not file_path[0]:
-            return None
-        file_path = file_path[0]
-        selected_file_name = os.path.basename(file_path)
         if format == 'Excel':
-            self.ui.selected_xlsx_lbl.setText(f'Excel выбран:\n{selected_file_name}')
+            tup_file_path = qtw.QFileDialog.getOpenFileName(self, 'Open File',filter=f"{format} (*.{extenion})")
+            if not tup_file_path[0]:
+                
+                return None
+            file_path = tup_file_path[0]    
+            self.ui.selected_xlsx_lbl.setText(f'Excel выбран:\n{os.path.basename(file_path)}')
             self.excel_file_path = file_path
         else:
-            self.ui.selected_txt_lbl.setText(f'Txt выбран:\n{selected_file_name}')
-            self.txt_file_path = file_path
-            self.events = self.parse_events()
-            self.ui.found_events_lbl.setText(f'Найдено {len(self.events)} событий')
-
+            tup_files_paths = qtw.QFileDialog.getOpenFileNames(self, 'Open File',filter=f"{format} (*.{extenion})")
+            if not tup_files_paths[0]:
+                return None
+            files_paths = tup_files_paths[0]
+            self.ui.selected_txt_lbl.setText(f'Выбрано:\n{len(files_paths)} txt')
+            self.txt_files_paths = files_paths
             for widget in self.ui.RightMenu.findChildren((qtw.QLabel,qtw.QPushButton,qtw.QLineEdit)):
                 widget.setEnabled(True)
 
     def write_new_button_pressed(self):
-        if not hasattr(self, 'txt_file_path'):
+        if not hasattr(self, 'txt_files_paths'):
             return None
-        logs = self.compose_logs_from_events()
-        
+        logs = self.compose_logs_from_files()
+
         wb = Workbook()
         ws = wb.active
         alignment = Alignment(horizontal='center')
-        for row in ws.iter_rows(min_row = 1, max_row = len(logs), min_col = 3, max_col = len(logs[0])+2):
+        for row in ws.iter_rows(min_row = 1, max_row = len(logs), min_col = 1, max_col = len(logs[0])):
             for cell in row:
-                cell.value = logs[cell.row-1][cell.column-3]
+                cell.value = logs[cell.row-1][cell.column-1]
                 cell.alignment = alignment
+
         self.set_styles(ws,len(logs[0]))
         if self.ui.file_name_lineEdit.text() == 'logs timestamp':
-            
             wb.save(f'logs {datetime.now().strftime("%d.%m.%Y %H-%M-%S")}.xlsx')
         else:
             wb.save(f'{self.ui.file_name_lineEdit.text()}.xlsx')
         self.ui.new_done_tick.setHidden(False)
         self.timer.start(1000)
         
-        
-
     def write_existing_btn_pressed(self):
         if not hasattr(self, 'excel_file_path'):
-            print('skip')
             return None
-        logs = self.compose_logs_from_events()
+
+        logs = self.compose_logs_from_files()
         logs.pop(0)
         wb = load_workbook(self.excel_file_path)
         sh = wb.active
         
         alignment = Alignment(horizontal='center')
         end_of_old_logs = sh.max_row
-        for row in sh.iter_rows(min_row = end_of_old_logs+1, max_row = len(logs) + end_of_old_logs, min_col = 3, max_col = len(logs[0])+2):
+        for row in sh.iter_rows(min_row = end_of_old_logs+1, max_row = len(logs) + end_of_old_logs, min_col = 1, max_col = len(logs[0])):
             for cell in row:
-                cell.value = logs[cell.row-1-end_of_old_logs][cell.column-3]
+                cell.value = logs[cell.row-1-end_of_old_logs][cell.column-1]
                 cell.alignment = alignment
         wb.save(os.path.basename(self.excel_file_path))
         self.ui.existing_done_tick.setHidden(False)
@@ -101,47 +99,41 @@ class MainWindow(base_class):
     def set_styles(self,ws, length):
         bold = Font(color="00000000", bold  = True)
         
-        for row in ws.iter_rows(min_row = 1, max_row = 1, min_col=3, max_col = 2+length):
+        for row in ws.iter_rows(min_row = 1, max_row = 1, min_col=1, max_col = length):
             for cell in row:
                 cell.font = bold
                 ws.column_dimensions[get_column_letter(cell.column)].width = 12
-                
-    def parse_events(self):
-        with open(self.txt_file_path,'r',encoding='utf-8') as file:
-            text = file.read()
-            events = text.split('END EVENT')
-            events.pop()
-        return events
-        
 
-    def compose_logs_from_events(self):
-        logs = [['Date', 'Origin time', 'Lat', 'Lon', 'Depth', 'DepthMIN','DepthMAX', 'M', 'AzMajor', 'Rminor', 'Rmajor', 'S', 'N stations']]
+    def compose_logs_from_files(self):
+        logs = [['Date', 'Origin time', 'Lat', 'Lon', 'AzMajor', 'Rminor', 'Rmajor', 'S']]
+        events = []    # 1event = text in 1 file 
+        for txt_file_path in self.txt_files_paths:
+            with open(txt_file_path, 'r', encoding='ANSI') as file:
+                text = file.read()
+                events.append(text)
         
-        for event in self.events:
+        for event in events:
             event_log = []
             event = event.strip()
-            event = event[:event.find('\nAZIMUTHAL GAP')]
+            lines = event.split('\n')
+            del lines[1]
+            line1, line2 = lines
             
-            dating = event[event.find('PROB='):event.find('NSTAT')]
-            dating = dating[dating.find('(')+1:dating.find(')')]
-            fulldate = datetime.strptime(dating, "%d.%m.%Y  %H.%M:%S.%f")
+            dating = line1[line1.find('T0=')+4:event.find('Err=')-1]
+            fulldate = datetime.strptime(dating, "%d.%m.%Y   %H.%M:%S.%f")
             date = fulldate.strftime("%d.%m.%Y")
             time = fulldate.strftime('%H:%M:%S.%f')[:-5]
             
-            lat,lon = event[event.find(')')+2:event.find('PROB')].split()[:-1]
-            lat,lon = float(lat.split('=')[1]), float(lon.split('=')[1])
-
-            depths = event[event.find('DEPTH'):]  
-            depth, depthmin, depthmax = [d.split('=')[1] for d in depths.split()]
-            M = ''
-            azimuth = event[event.find('ELLIPSE: ')+9:event.find('DEPTH')-1]
-            AzMajor, Rminor, Rmajor = [d.split('=')[1] for d in azimuth.split()]
-            S = float(Rminor) * float(Rmajor) * pi
-            Nstat = event[event.find('NSTAT'):event.find('NPHASES')-1].split('=')[1]
-            event_log = [date,time,round(lat,3),round(lon,3), int(depth), int(depthmin), int(depthmax), M, float(AzMajor), float(Rminor), float(Rmajor), round(S,2), int(Nstat)]
+            lat = float(line1[line1.find('FI=')+3:line1.find('LD=')-1])
+            lon = float(line1[line1.find('LD=')+3:line1.find('T0=')-1])
             
+            azimuth = line2[line2.find('Азимут : '):line2.find('большой')-1].split(' : ')[1]
+            Rmajor = line2[line2.find('большой радиус : '):line2.find('малый радиус')].split(' : ')[1]
+            Rminor = line2[line2.find('малый радиус : '):].split(' : ')[1] 
+            S = float(Rminor) * float(Rmajor) * pi
+
+            event_log = [date,time,round(lat,3),round(lon,3), float(azimuth), float(Rminor), float(Rmajor), round(S,2)]
             logs.append(event_log)
-        
         return logs
 
 
